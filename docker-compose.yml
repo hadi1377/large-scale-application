@@ -8,6 +8,7 @@ services:
       - ENV=development
     volumes:
       - ./user-service:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
   product-service:
@@ -19,6 +20,7 @@ services:
       - ENV=development
     volumes:
       - ./product-service:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
   order-service:
@@ -30,6 +32,7 @@ services:
       - ENV=development
     volumes:
       - ./order-service:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
   payment-service:
@@ -41,6 +44,7 @@ services:
       - ENV=development
     volumes:
       - ./payment-service:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
   notification-service:
@@ -52,5 +56,6 @@ services:
       - ENV=development
     volumes:
       - ./notification-service:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
