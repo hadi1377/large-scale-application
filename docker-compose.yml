@@ -6,9 +6,25 @@ services:
       - "13231:8000"
     environment:
       - ENV=development
+      - DATABASE_URL=postgresql://user_db_user:user_db_password@user-db:5432/user_db
     volumes:
       - ./user-service:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - user-db
+    restart: unless-stopped
+
+  user-db:
+    image: postgres:15-alpine
+    container_name: user-db
+    environment:
+      - POSTGRES_USER=user_db_user
+      - POSTGRES_PASSWORD=user_db_password
+      - POSTGRES_DB=user_db
+    ports:
+      - "13241:5432"
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
     restart: unless-stopped
 
   product-service:
@@ -18,9 +34,25 @@ services:
       - "13232:8000"
     environment:
       - ENV=development
+      - MONGODB_URL=mongodb://product_db_user:product_db_password@product-db:27017/product_db?authSource=admin
     volumes:
       - ./product-service:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - product-db
+    restart: unless-stopped
+
+  product-db:
+    image: mongo:7
+    container_name: product-db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=product_db_user
+      - MONGO_INITDB_ROOT_PASSWORD=product_db_password
+      - MONGO_INITDB_DATABASE=product_db
+    ports:
+      - "13242:27017"
+    volumes:
+      - product_db_data:/data/db
     restart: unless-stopped
 
   order-service:
@@ -30,9 +62,25 @@ services:
       - "13233:8000"
     environment:
       - ENV=development
+      - DATABASE_URL=postgresql://order_db_user:order_db_password@order-db:5432/order_db
     volumes:
       - ./order-service:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - order-db
+    restart: unless-stopped
+
+  order-db:
+    image: postgres:15-alpine
+    container_name: order-db
+    environment:
+      - POSTGRES_USER=order_db_user
+      - POSTGRES_PASSWORD=order_db_password
+      - POSTGRES_DB=order_db
+    ports:
+      - "13243:5432"
+    volumes:
+      - order_db_data:/var/lib/postgresql/data
     restart: unless-stopped
 
   payment-service:
@@ -42,9 +90,25 @@ services:
       - "13234:8000"
     environment:
       - ENV=development
+      - DATABASE_URL=postgresql://payment_db_user:payment_db_password@payment-db:5432/payment_db
     volumes:
       - ./payment-service:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - payment-db
+    restart: unless-stopped
+
+  payment-db:
+    image: postgres:15-alpine
+    container_name: payment-db
+    environment:
+      - POSTGRES_USER=payment_db_user
+      - POSTGRES_PASSWORD=payment_db_password
+      - POSTGRES_DB=payment_db
+    ports:
+      - "13244:5432"
+    volumes:
+      - payment_db_data:/var/lib/postgresql/data
     restart: unless-stopped
 
   notification-service:
@@ -54,8 +118,31 @@ services:
       - "13235:8000"
     environment:
       - ENV=development
+      - RABBITMQ_URL=amqp://rabbitmq_user:rabbitmq_password@rabbitmq:5672/
     volumes:
       - ./notification-service:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - rabbitmq
     restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    environment:
+      - RABBITMQ_DEFAULT_USER=rabbitmq_user
+      - RABBITMQ_DEFAULT_PASS=rabbitmq_password
+    ports:
+      - "13251:5672"
+      - "13252:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+
+volumes:
+  user_db_data:
+  product_db_data:
+  order_db_data:
+  payment_db_data:
+  rabbitmq_data:
 
