@@ -1,0 +1,56 @@
+services:
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    ports:
+      - "13231:8000"
+    environment:
+      - ENV=development
+    volumes:
+      - ./user-service:/app
+    restart: unless-stopped
+
+  product-service:
+    build: ./product-service
+    container_name: product-service
+    ports:
+      - "13232:8000"
+    environment:
+      - ENV=development
+    volumes:
+      - ./product-service:/app
+    restart: unless-stopped
+
+  order-service:
+    build: ./order-service
+    container_name: order-service
+    ports:
+      - "13233:8000"
+    environment:
+      - ENV=development
+    volumes:
+      - ./order-service:/app
+    restart: unless-stopped
+
+  payment-service:
+    build: ./payment-service
+    container_name: payment-service
+    ports:
+      - "13234:8000"
+    environment:
+      - ENV=development
+    volumes:
+      - ./payment-service:/app
+    restart: unless-stopped
+
+  notification-service:
+    build: ./notification-service
+    container_name: notification-service
+    ports:
+      - "13235:8000"
+    environment:
+      - ENV=development
+    volumes:
+      - ./notification-service:/app
+    restart: unless-stopped
+
