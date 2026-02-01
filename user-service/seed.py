@@ -1,16 +1,8 @@
 import asyncio
-from passlib.context import CryptContext
 from sqlalchemy import select
 from database import AsyncSessionLocal, engine, Base
 from models import User
-
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def hash_password(password: str) -> str:
-    """Hash a password using bcrypt."""
-    return pwd_context.hash(password)
+from auth import hash_password
 
 
 async def seed_admin():
