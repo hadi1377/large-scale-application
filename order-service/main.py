@@ -44,9 +44,17 @@ def custom_openapi():
         }
     }
     
-    # Add security requirement to /orders endpoint
+    # Add security requirement to /orders endpoints
     if "paths" in openapi_schema and "/orders" in openapi_schema["paths"]:
-        openapi_schema["paths"]["/orders"]["post"]["security"] = [{"Bearer": []}]
+        if "post" in openapi_schema["paths"]["/orders"]:
+            openapi_schema["paths"]["/orders"]["post"]["security"] = [{"Bearer": []}]
+        if "get" in openapi_schema["paths"]["/orders"]:
+            openapi_schema["paths"]["/orders"]["get"]["security"] = [{"Bearer": []}]
+    
+    # Add security requirement to /orders/{order_id} endpoint
+    if "paths" in openapi_schema and "/orders/{order_id}" in openapi_schema["paths"]:
+        if "get" in openapi_schema["paths"]["/orders/{order_id}"]:
+            openapi_schema["paths"]["/orders/{order_id}"]["get"]["security"] = [{"Bearer": []}]
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema
@@ -84,6 +92,31 @@ async def get_current_user_id(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return user_id
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+async def get_current_user_info(
+    token: str = Depends(oauth2_scheme)
+) -> dict:
+    """Get the current authenticated user ID and role from the JWT token."""
+    try:
+        payload = verify_token(token)
+        user_id: str = payload.get("sub")
+        role: str = payload.get("role", "user")  # Default to "user" if role not present
+        
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        return {"user_id": user_id, "role": role}
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -250,3 +283,144 @@ async def create_order(
     )
     
     return order_response
+
+
+async def build_order_response(order: Order, db: AsyncSession) -> OrderResponse:
+    """Helper function to build OrderResponse with items."""
+    # Fetch order items
+    result = await db.execute(
+        select(OrderItem).where(OrderItem.order_id == order.id)
+    )
+    order_items = result.scalars().all()
+    
+    return OrderResponse(
+        id=order.id,
+        user_id=order.user_id,
+        status=order.status,
+        total_amount=order.total_amount,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
+        items=[
+            OrderItemResponse(
+                id=item.id,
+                order_id=item.order_id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                price_per_item=item.price_per_item
+            )
+            for item in order_items
+        ]
+    )
+
+
+@app.get(
+    "/orders",
+    response_model=List[OrderResponse],
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(oauth2_scheme)]
+)
+async def list_orders(
+    user_info: dict = Depends(get_current_user_info),
+    db: AsyncSession = Depends(get_db),
+    skip: int = 0,
+    limit: int = 10
+):
+    """
+    Get a list of orders.
+    
+    - **Admin users**: Can see all orders
+    - **Regular users**: Can only see their own orders
+    
+    - **skip**: Number of orders to skip (for pagination)
+    - **limit**: Number of orders to return (default: 10, max: 100)
+    
+    Requires authentication via JWT token.
+    """
+    user_id = user_info["user_id"]
+    role = user_info["role"]
+    
+    # Limit the maximum number of results
+    limit = min(limit, 100)
+    
+    import uuid as uuid_lib
+    
+    # Build query based on user role
+    if role == "admin":
+        # Admin can see all orders
+        query = select(Order).order_by(Order.created_at.desc())
+    else:
+        # Regular users can only see their own orders
+        query = select(Order).where(
+            Order.user_id == uuid_lib.UUID(user_id)
+        ).order_by(Order.created_at.desc())
+    
+    # Apply pagination
+    query = query.offset(skip).limit(limit)
+    
+    # Execute query
+    result = await db.execute(query)
+    orders = result.scalars().all()
+    
+    # Build responses with items
+    order_responses = []
+    for order in orders:
+        order_response = await build_order_response(order, db)
+        order_responses.append(order_response)
+    
+    return order_responses
+
+
+@app.get(
+    "/orders/{order_id}",
+    response_model=OrderResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(oauth2_scheme)]
+)
+async def get_order(
+    order_id: str,
+    user_info: dict = Depends(get_current_user_info),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get a single order by ID.
+    
+    - **Admin users**: Can see any order
+    - **Regular users**: Can only see their own orders
+    
+    Requires authentication via JWT token.
+    """
+    user_id = user_info["user_id"]
+    role = user_info["role"]
+    
+    import uuid as uuid_lib
+    
+    # Validate order_id format
+    try:
+        order_uuid = uuid_lib.UUID(order_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid order ID format"
+        )
+    
+    # Fetch order
+    result = await db.execute(
+        select(Order).where(Order.id == order_uuid)
+    )
+    order = result.scalar_one_or_none()
+    
+    if order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order with ID {order_id} not found"
+        )
+    
+    # Check access permission
+    if role != "admin" and order.user_id != uuid_lib.UUID(user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this order"
+        )
+    
+    # Build and return response
+    return await build_order_response(order, db)
