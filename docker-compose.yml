@@ -157,6 +157,14 @@ services:
       - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
 
+  mailpit:
+    image: axllent/mailpit
+    container_name: mailpit
+    ports:
+      - "13253:8025"  # Web UI
+      - "13254:1025"  # SMTP server
+    restart: unless-stopped
+
 volumes:
   user_db_data:
   product_db_data:
