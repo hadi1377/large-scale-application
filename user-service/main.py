@@ -6,7 +6,11 @@ from models import User
 from schemas import UserRegisterRequest, UserResponse
 from auth import hash_password
 
-app = FastAPI(title="User Service")
+app = FastAPI(
+    title="User Service",
+    description="User management service with registration and authentication endpoints",
+    version="1.0.0"
+)
 
 
 @app.on_event("startup")

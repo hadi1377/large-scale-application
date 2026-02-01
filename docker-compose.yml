@@ -1,4 +1,22 @@
 services:
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "13230:8000"
+    environment:
+      - ENV=development
+    volumes:
+      - ./api-gateway:/app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      - user-service
+      - product-service
+      - order-service
+      - payment-service
+      - notification-service
+    restart: unless-stopped
+
   user-service:
     build: ./user-service
     container_name: user-service
