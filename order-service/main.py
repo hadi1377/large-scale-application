@@ -8,7 +8,7 @@ from typing import List
 
 from database import engine, Base, get_db
 from models import Order, OrderItem
-from schemas import OrderCreate, OrderResponse, OrderItemResponse
+from schemas import OrderCreate, OrderResponse, OrderItemResponse, OrderUpdate
 from auth import verify_token
 
 # OAuth2 scheme for token extraction
@@ -51,10 +51,12 @@ def custom_openapi():
         if "get" in openapi_schema["paths"]["/orders"]:
             openapi_schema["paths"]["/orders"]["get"]["security"] = [{"Bearer": []}]
     
-    # Add security requirement to /orders/{order_id} endpoint
+    # Add security requirement to /orders/{order_id} endpoints
     if "paths" in openapi_schema and "/orders/{order_id}" in openapi_schema["paths"]:
         if "get" in openapi_schema["paths"]["/orders/{order_id}"]:
             openapi_schema["paths"]["/orders/{order_id}"]["get"]["security"] = [{"Bearer": []}]
+        if "put" in openapi_schema["paths"]["/orders/{order_id}"]:
+            openapi_schema["paths"]["/orders/{order_id}"]["put"]["security"] = [{"Bearer": []}]
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema
@@ -460,6 +462,70 @@ async def get_order(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to access this order"
         )
+    
+    # Build and return response
+    return await build_order_response(order, db)
+
+
+@app.put(
+    "/orders/{order_id}",
+    response_model=OrderResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(oauth2_scheme)]
+)
+async def update_order(
+    order_id: str,
+    order_update: OrderUpdate,
+    user_info: dict = Depends(get_current_user_info),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Update an order status.
+    
+    - **status**: New order status (must be "completed" or "failed")
+    
+    **Only admin users can update orders.**
+    
+    Requires authentication via JWT token.
+    """
+    user_id = user_info["user_id"]
+    role = user_info["role"]
+    
+    # Check if user is admin
+    if role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admin users can update orders"
+        )
+    
+    import uuid as uuid_lib
+    
+    # Validate order_id format
+    try:
+        order_uuid = uuid_lib.UUID(order_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid order ID format"
+        )
+    
+    # Fetch order
+    result = await db.execute(
+        select(Order).where(Order.id == order_uuid)
+    )
+    order = result.scalar_one_or_none()
+    
+    if order is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Order with ID {order_id} not found"
+        )
+    
+    # Update order status
+    order.status = order_update.status
+    
+    await db.commit()
+    await db.refresh(order)
     
     # Build and return response
     return await build_order_response(order, db)

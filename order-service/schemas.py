@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List
+from typing import List, Literal
 from pydantic import BaseModel, Field
 from decimal import Decimal
 import uuid
@@ -50,6 +50,18 @@ class OrderItemResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class OrderUpdate(BaseModel):
+    """Schema for updating an order status"""
+    status: Literal["completed", "failed"] = Field(..., description="Order status: 'completed' or 'failed'")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "status": "completed"
+            }
+        }
 
 
 class OrderResponse(BaseModel):
