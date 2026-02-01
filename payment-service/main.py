@@ -1,6 +1,8 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from typing import List
+import uuid
 from database import engine, Base, get_db
 from models import Payment
 from schemas import PaymentRequest, PaymentResponse
@@ -18,6 +20,25 @@ async def startup():
 @app.get("/")
 def root():
     return {"service": "payment-service"}
+
+
+@app.get("/orders/{order_id}/payments", response_model=List[PaymentResponse])
+async def get_order_payments(
+    order_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get all payments for a specific order.
+    
+    - **order_id**: UUID of the order to get payments for
+    
+    Returns a list of all payment records associated with the order.
+    """
+    result = await db.execute(
+        select(Payment).where(Payment.order_id == order_id)
+    )
+    payments = result.scalars().all()
+    return payments
 
 
 @app.post("/success", response_model=PaymentResponse)
