@@ -62,8 +62,9 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-# Product service URL
+# Service URLs
 PRODUCT_SERVICE_URL = "http://product-service:8000"
+USER_SERVICE_URL = "http://user-service:8000"
 
 
 @app.on_event("startup")
@@ -103,25 +104,63 @@ async def get_current_user_id(
 async def get_current_user_info(
     token: str = Depends(oauth2_scheme)
 ) -> dict:
-    """Get the current authenticated user ID and role from the JWT token."""
+    """Get the current authenticated user ID and role by validating token with user-service."""
     try:
-        payload = verify_token(token)
-        user_id: str = payload.get("sub")
-        role: str = payload.get("role", "user")  # Default to "user" if role not present
-        
-        if user_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid authentication credentials",
-                headers={"WWW-Authenticate": "Bearer"},
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            # Call user-service /me endpoint to validate token and get user info
+            response = await client.get(
+                f"{USER_SERVICE_URL}/me",
+                headers={"Authorization": f"Bearer {token}"}
             )
-        
-        return {"user_id": user_id, "role": role}
-    except ValueError:
+            
+            if response.status_code == 401:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid authentication credentials",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            elif response.status_code == 404:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="User not found",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            elif response.status_code != 200:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="User service is unavailable"
+                )
+            
+            user_data = response.json()
+            user_id = str(user_data.get("id"))
+            role = user_data.get("main_role", "user")
+            
+            if not user_id:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid user data",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            
+            return {"user_id": user_id, "role": role}
+            
+    except httpx.TimeoutException:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Timeout connecting to user service"
+        )
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cannot connect to user service"
+        )
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error validating token: {str(e)}"
         )
 
 
