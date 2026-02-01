@@ -1,16 +1,54 @@
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from database import engine, Base, get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import User
 from schemas import UserRegisterRequest, UserResponse, UserLoginRequest, LoginResponse
-from auth import hash_password, verify_password, create_access_token
+from auth import hash_password, verify_password, create_access_token, verify_token
+
+# OAuth2 scheme for token extraction
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 app = FastAPI(
     title="User Service",
     description="User management service with registration and authentication endpoints",
     version="1.0.0"
 )
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    from fastapi.openapi.utils import get_openapi
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    
+    # Add security scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "Bearer": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "Enter your JWT token (from /login endpoint)"
+        }
+    }
+    
+    # Add security requirement to /me endpoint
+    if "paths" in openapi_schema and "/me" in openapi_schema["paths"]:
+        openapi_schema["paths"]["/me"]["get"]["security"] = [{"Bearer": []}]
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 
 @app.on_event("startup")
@@ -101,4 +139,63 @@ async def login(login_data: UserLoginRequest, db: AsyncSession = Depends(get_db)
         access_token=access_token,
         user=user
     )
+
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """Get the current authenticated user from the JWT token."""
+    try:
+        payload = verify_token(token)
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Fetch user from database
+    result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return user
+
+
+@app.get(
+    "/me",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(oauth2_scheme)]
+)
+async def get_me(current_user: User = Depends(get_current_user)):
+    """
+    Get the current authenticated user's information.
+    
+    Requires a valid JWT token in the Authorization header.
+    
+    **How to use:**
+    1. Login using `/login` endpoint to get your access token
+    2. Click the "Authorize" button at the top of this page
+    3. Enter your token (just the token, without "Bearer" prefix)
+    4. Click "Authorize" and then "Close"
+    5. Now you can use the "Try it out" button on this endpoint
+    """
+    return current_user
 
