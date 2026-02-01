@@ -199,3 +199,40 @@ async def get_me(current_user: User = Depends(get_current_user)):
     """
     return current_user
 
+
+@app.get(
+    "/users/{user_id}",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK
+)
+async def get_user_by_id(user_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Get user information by ID.
+    
+    This is an internal endpoint for service-to-service communication.
+    Used by other services (e.g., notification-service) to fetch user details.
+    """
+    import uuid as uuid_lib
+    
+    # Validate user_id format
+    try:
+        user_uuid = uuid_lib.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID format"
+        )
+    
+    # Fetch user from database
+    result = await db.execute(
+        select(User).where(User.id == user_uuid)
+    )
+    user = result.scalar_one_or_none()
+    
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with ID {user_id} not found"
+        )
+    
+    return user

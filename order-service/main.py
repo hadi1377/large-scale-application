@@ -10,6 +10,7 @@ from database import engine, Base, get_db
 from models import Order, OrderItem
 from schemas import OrderCreate, OrderResponse, OrderItemResponse, OrderUpdate
 from auth import verify_token
+from event_publisher import publish_event, close_connection
 
 # OAuth2 scheme for token extraction
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -74,6 +75,12 @@ async def startup():
     # Create database tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    # Close RabbitMQ connection
+    await close_connection()
 
 
 @app.get("/")
@@ -323,6 +330,14 @@ async def create_order(
         ]
     )
     
+    # Publish order_placed event
+    await publish_event("order_placed", {
+        "order_id": str(order.id),
+        "user_id": str(order.user_id),
+        "status": order.status,
+        "total_amount": str(order.total_amount)
+    })
+    
     return order_response
 
 
@@ -522,10 +537,27 @@ async def update_order(
         )
     
     # Update order status
+    old_status = order.status
     order.status = order_update.status
     
     await db.commit()
     await db.refresh(order)
+    
+    # Publish event based on new status
+    if order_update.status == "failed":
+        await publish_event("order_failed", {
+            "order_id": str(order.id),
+            "user_id": str(order.user_id),
+            "status": order.status,
+            "total_amount": str(order.total_amount)
+        })
+    elif order_update.status == "completed":
+        await publish_event("order_completed", {
+            "order_id": str(order.id),
+            "user_id": str(order.user_id),
+            "status": order.status,
+            "total_amount": str(order.total_amount)
+        })
     
     # Build and return response
     return await build_order_response(order, db)

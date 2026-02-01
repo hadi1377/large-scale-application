@@ -81,11 +81,13 @@ services:
     environment:
       - ENV=development
       - DATABASE_URL=postgresql://order_db_user:order_db_password@order-db:5432/order_db
+      - RABBITMQ_URL=amqp://rabbitmq_user:rabbitmq_password@rabbitmq:5672/
     volumes:
       - ./order-service:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - order-db
+      - rabbitmq
     restart: unless-stopped
 
   order-db:
@@ -137,11 +139,18 @@ services:
     environment:
       - ENV=development
       - RABBITMQ_URL=amqp://rabbitmq_user:rabbitmq_password@rabbitmq:5672/
+      - SMTP_HOST=mailpit
+      - SMTP_PORT=1025
+      - SMTP_FROM_EMAIL=noreply@example.com
+      - SMTP_FROM_NAME=Order Service
+      - USER_SERVICE_URL=http://user-service:8000
     volumes:
       - ./notification-service:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - rabbitmq
+      - mailpit
+      - user-service
     restart: unless-stopped
 
   rabbitmq:
