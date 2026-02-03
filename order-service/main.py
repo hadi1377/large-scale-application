@@ -11,6 +11,12 @@ from models import Order, OrderItem
 from schemas import OrderCreate, OrderResponse, OrderItemResponse, OrderUpdate
 from auth import verify_token
 from event_publisher import publish_event, close_connection
+from service_client import (
+    call_user_service,
+    call_product_service,
+    call_payment_service,
+    get_circuit_breaker_state
+)
 
 # OAuth2 scheme for token extraction
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -65,10 +71,7 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-# Service URLs
-PRODUCT_SERVICE_URL = "http://product-service:8000"
-USER_SERVICE_URL = "http://user-service:8000"
-PAYMENT_SERVICE_URL = "http://payment-service:8000"
+# Service URLs are now managed in service_client.py
 
 
 @app.on_event("startup")
@@ -87,6 +90,19 @@ async def shutdown():
 @app.get("/")
 def root():
     return {"service": "order-service"}
+
+
+@app.get("/health/circuit-breakers")
+async def get_circuit_breaker_health():
+    """
+    Get the health status of all circuit breakers.
+    Useful for monitoring and debugging service availability.
+    """
+    return {
+        "user_service": get_circuit_breaker_state("user-service"),
+        "product_service": get_circuit_breaker_state("product-service"),
+        "payment_service": get_circuit_breaker_state("payment-service")
+    }
 
 
 async def get_current_user_id(
@@ -116,44 +132,45 @@ async def get_current_user_info(
 ) -> dict:
     """Get the current authenticated user ID and role by validating token with user-service."""
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            # Call user-service /me endpoint to validate token and get user info
-            response = await client.get(
-                f"{USER_SERVICE_URL}/me",
-                headers={"Authorization": f"Bearer {token}"}
+        # Call user-service /me endpoint to validate token and get user info
+        # Circuit breaker is handled in service_client
+        response = await call_user_service(
+            method="GET",
+            endpoint="/me",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        if response.status_code == 401:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+                headers={"WWW-Authenticate": "Bearer"},
             )
-            
-            if response.status_code == 401:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid authentication credentials",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-            elif response.status_code == 404:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="User not found",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-            elif response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="User service is unavailable"
-                )
-            
-            user_data = response.json()
-            user_id = str(user_data.get("id"))
-            role = user_data.get("main_role", "user")
-            
-            if not user_id:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid user data",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-            
-            return {"user_id": user_id, "role": role}
-            
+        elif response.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        elif response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="User service is unavailable"
+            )
+        
+        user_data = response.json()
+        user_id = str(user_data.get("id"))
+        role = user_data.get("main_role", "user")
+        
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid user data",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        return {"user_id": user_id, "role": role}
+        
     except httpx.TimeoutException:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -163,6 +180,12 @@ async def get_current_user_info(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cannot connect to user service"
+        )
+    except httpx.HTTPError as e:
+        # Circuit breaker may raise HTTPError when open
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(e)
         )
     except HTTPException:
         # Re-raise HTTP exceptions
@@ -182,38 +205,43 @@ async def verify_products_and_stock(items: List[dict]) -> dict:
     product_data = {}
     errors = []
     
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        for item in items:
-            product_id = item["product_id"]
-            quantity = item["quantity"]
+    for item in items:
+        product_id = item["product_id"]
+        quantity = item["quantity"]
+        
+        try:
+            # Fetch product from product service (circuit breaker protected)
+            response = await call_product_service(
+                method="GET",
+                endpoint=f"/products/{product_id}"
+            )
             
-            try:
-                # Fetch product from product service
-                response = await client.get(f"{PRODUCT_SERVICE_URL}/products/{product_id}")
-                
-                if response.status_code == 404:
-                    errors.append(f"Product with ID {product_id} not found")
-                    continue
-                elif response.status_code != 200:
-                    errors.append(f"Error fetching product {product_id}: HTTP {response.status_code}")
-                    continue
-                
-                product = response.json()
-                product_data[product_id] = product
-                
-                # Check stock availability
-                if product.get("stock", 0) < quantity:
-                    errors.append(
-                        f"Product {product.get('name', product_id)} has insufficient stock. "
-                        f"Available: {product.get('stock', 0)}, Requested: {quantity}"
-                    )
-                
-            except httpx.TimeoutException:
-                errors.append(f"Timeout while fetching product {product_id}")
-            except httpx.ConnectError:
-                errors.append("Cannot connect to product service")
-            except Exception as e:
-                errors.append(f"Error verifying product {product_id}: {str(e)}")
+            if response.status_code == 404:
+                errors.append(f"Product with ID {product_id} not found")
+                continue
+            elif response.status_code != 200:
+                errors.append(f"Error fetching product {product_id}: HTTP {response.status_code}")
+                continue
+            
+            product = response.json()
+            product_data[product_id] = product
+            
+            # Check stock availability
+            if product.get("stock", 0) < quantity:
+                errors.append(
+                    f"Product {product.get('name', product_id)} has insufficient stock. "
+                    f"Available: {product.get('stock', 0)}, Requested: {quantity}"
+                )
+            
+        except httpx.TimeoutException:
+            errors.append(f"Timeout while fetching product {product_id}")
+        except httpx.ConnectError:
+            errors.append("Cannot connect to product service")
+        except httpx.HTTPError as e:
+            # Circuit breaker may raise HTTPError when open
+            errors.append(f"Product service unavailable: {str(e)}")
+        except Exception as e:
+            errors.append(f"Error verifying product {product_id}: {str(e)}")
     
     if errors:
         raise HTTPException(
@@ -291,30 +319,30 @@ async def create_order(
     
     try:
         if order_data.success:
-            # Call payment service success endpoint
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                payment_response = await client.post(
-                    f"{PAYMENT_SERVICE_URL}/success",
-                    json=payment_data
+            # Call payment service success endpoint (circuit breaker protected)
+            payment_response = await call_payment_service(
+                method="POST",
+                endpoint="/success",
+                json_data=payment_data
+            )
+            if payment_response.status_code not in [200, 201]:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=f"Payment service error: HTTP {payment_response.status_code}"
                 )
-                if payment_response.status_code not in [200, 201]:
-                    raise HTTPException(
-                        status_code=status.HTTP_502_BAD_GATEWAY,
-                        detail=f"Payment service error: HTTP {payment_response.status_code}"
-                    )
         else:
             # Payment failed - return error to customer
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                payment_response = await client.post(
-                    f"{PAYMENT_SERVICE_URL}/failed",
-                    json=payment_data
-                )
-                # Even if the payment service call succeeds, payment failed
-                # Return error to customer
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail="Payment failed. Order was not created."
-                )
+            payment_response = await call_payment_service(
+                method="POST",
+                endpoint="/failed",
+                json_data=payment_data
+            )
+            # Even if the payment service call succeeds, payment failed
+            # Return error to customer
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail="Payment failed. Order was not created."
+            )
     except HTTPException:
         # Re-raise HTTP exceptions (payment failed)
         raise
@@ -327,6 +355,12 @@ async def create_order(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cannot connect to payment service. Please try again."
+        )
+    except httpx.HTTPError as e:
+        # Circuit breaker may raise HTTPError when open
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Payment service unavailable: {str(e)}"
         )
     except Exception as e:
         raise HTTPException(
