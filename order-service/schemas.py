@@ -22,6 +22,7 @@ class OrderItemCreate(BaseModel):
 class OrderCreate(BaseModel):
     """Schema for creating an order"""
     items: List[OrderItemCreate] = Field(..., min_items=1, description="At least one item is required")
+    success: bool = Field(default=True, description="Payment success flag. If true, payment will succeed; if false, payment will fail.")
 
     class Config:
         json_schema_extra = {
@@ -35,7 +36,8 @@ class OrderCreate(BaseModel):
                         "product_id": "507f1f77bcf86cd799439012",
                         "quantity": 1
                     }
-                ]
+                ],
+                "success": True
             }
         }
 

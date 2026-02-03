@@ -68,6 +68,7 @@ app.openapi = custom_openapi
 # Service URLs
 PRODUCT_SERVICE_URL = "http://product-service:8000"
 USER_SERVICE_URL = "http://user-service:8000"
+PAYMENT_SERVICE_URL = "http://payment-service:8000"
 
 
 @app.on_event("startup")
@@ -243,10 +244,12 @@ async def create_order(
     - **items**: List of order items, each containing:
         - **product_id**: Product ID from product service
         - **quantity**: Quantity to order (must be > 0)
+    - **success**: Payment success flag (default: True). If false, payment will fail and order will not be created.
     
     Prices are automatically fetched from the product service.
     Requires authentication via JWT token.
     Validates that all products exist and have sufficient stock.
+    Payment is processed BEFORE order creation. If payment fails, order is not created and an error is returned.
     
     **How to use:**
     1. Login using `/login` endpoint in user-service to get your access token
@@ -275,16 +278,71 @@ async def create_order(
         product_price = Decimal(str(product["price"]))
         item_total = product_price * item.quantity
         total_amount += item_total
-    
-    # Create order
+
+    # Generate order ID for payment processing
     import uuid as uuid_lib
+    order_id = uuid_lib.uuid4()
+    
+    # Process payment BEFORE creating the order
+    payment_data = {
+        "order_id": str(order_id),
+        "amount": str(total_amount)
+    }
+    
+    try:
+        if order_data.success:
+            # Call payment service success endpoint
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                payment_response = await client.post(
+                    f"{PAYMENT_SERVICE_URL}/success",
+                    json=payment_data
+                )
+                if payment_response.status_code not in [200, 201]:
+                    raise HTTPException(
+                        status_code=status.HTTP_502_BAD_GATEWAY,
+                        detail=f"Payment service error: HTTP {payment_response.status_code}"
+                    )
+        else:
+            # Payment failed - return error to customer
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                payment_response = await client.post(
+                    f"{PAYMENT_SERVICE_URL}/failed",
+                    json=payment_data
+                )
+                # Even if the payment service call succeeds, payment failed
+                # Return error to customer
+                raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail="Payment failed. Order was not created."
+                )
+    except HTTPException:
+        # Re-raise HTTP exceptions (payment failed)
+        raise
+    except httpx.TimeoutException:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payment service timeout. Please try again."
+        )
+    except httpx.ConnectError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cannot connect to payment service. Please try again."
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Payment processing error: {str(e)}"
+        )
+    
+    # Payment succeeded - proceed with order creation
     order = Order(
+        id=order_id,
         user_id=uuid_lib.UUID(user_id),
         status="pending",
         total_amount=total_amount
     )
     
-    # Fix: Create order first, then add items
+    # Create order first, then add items
     db.add(order)
     await db.flush()  # Flush to get the order ID
     
