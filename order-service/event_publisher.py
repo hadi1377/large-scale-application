@@ -86,3 +86,4 @@ async def close_connection():
         _exchange = None
         logger.info("RabbitMQ connection closed")
 
+

@@ -1,0 +1,178 @@
+================================================================================
+                    KUBERNETES ARCHITECTURE DIAGRAM
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          INTERNET / USERS                                │
+└────────────────────────────────┬─────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       NGINX INGRESS CONTROLLER                           │
+│                         (External Access)                                │
+└────────────────────────────────┬─────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          KUBERNETES CLUSTER                              │
+│                         Namespace: microservices                         │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │                       API GATEWAY                               │    │
+│  │                    (Port 8000, 2 replicas)                     │    │
+│  │          Central routing and documentation hub                 │    │
+│  └──────┬─────────────────────────────────────────────────────────┘    │
+│         │                                                               │
+│         ├───────────┬──────────────┬──────────────┬──────────────┐     │
+│         ▼           ▼              ▼              ▼              ▼     │
+│  ┌───────────┐ ┌──────────┐ ┌───────────┐ ┌────────────┐ ┌──────────┐ │
+│  │   USER    │ │ PRODUCT  │ │   ORDER   │ │  PAYMENT   │ │NOTIFICATION││
+│  │  SERVICE  │ │ SERVICE  │ │  SERVICE  │ │  SERVICE   │ │  SERVICE  │ │
+│  │  (x2)     │ │  (x2)    │ │   (x2)    │ │   (x2)     │ │   (x2)    │ │
+│  │ Port 8000 │ │Port 8000 │ │Port 8000  │ │Port 8000   │ │Port 8000  │ │
+│  └─────┬─────┘ └────┬─────┘ └─────┬─────┘ └──────┬─────┘ └─────┬─────┘ │
+│        │            │             │               │              │      │
+│        │            │             │               │              │      │
+│        ▼            ▼             ▼               ▼              ▼      │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                    DATABASE LAYER                                │   │
+│  │                                                                   │   │
+│  │  ┌───────────┐  ┌──────────┐  ┌───────────┐  ┌────────────┐   │   │
+│  │  │PostgreSQL │  │PostgreSQL│  │PostgreSQL │  │  MongoDB   │   │   │
+│  │  │  User DB  │  │ Order DB │  │Payment DB │  │ Product DB │   │   │
+│  │  │  (1Gi)    │  │  (1Gi)   │  │  (1Gi)    │  │   (2Gi)    │   │   │
+│  │  └───────────┘  └──────────┘  └───────────┘  └────────────┘   │   │
+│  │                                                                   │   │
+│  │            All databases use PersistentVolumeClaims              │   │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │                  INFRASTRUCTURE SERVICES                        │    │
+│  │                                                                  │    │
+│  │  ┌─────────────────────────┐    ┌──────────────────────────┐  │    │
+│  │  │       RABBITMQ          │    │       MAILPIT            │  │    │
+│  │  │   Message Queue         │    │    Email Testing         │  │    │
+│  │  │   (Async Communication) │    │                          │  │    │
+│  │  │   AMQP: 5672            │    │    SMTP: 1025           │  │    │
+│  │  │   Management: 15672     │    │    Web UI: 8025         │  │    │
+│  │  │   (1Gi Storage)         │    │                          │  │    │
+│  │  └─────────────────────────┘    └──────────────────────────┘  │    │
+│  └────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │                   CONFIGURATION LAYER                           │    │
+│  │                                                                  │    │
+│  │  ┌─────────────────────┐      ┌──────────────────────────┐    │    │
+│  │  │     ConfigMap       │      │        Secrets           │    │    │
+│  │  │  - Environment vars │      │  - DB passwords          │    │    │
+│  │  │  - Service URLs     │      │  - API keys              │    │    │
+│  │  │  - Feature flags    │      │  - Credentials           │    │    │
+│  │  └─────────────────────┘      └──────────────────────────┘    │    │
+│  └────────────────────────────────────────────────────────────────┘    │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                         DATA FLOW EXAMPLES
+================================================================================
+
+1. USER REGISTRATION FLOW:
+   Internet → Ingress → API Gateway → User Service → PostgreSQL (User DB)
+
+2. CREATE ORDER FLOW:
+   Internet → Ingress → API Gateway → Order Service → 
+   ├─→ User Service (validate user)
+   ├─→ Product Service (check stock)
+   ├─→ Payment Service (process payment)
+   ├─→ PostgreSQL (Order DB) (save order)
+   └─→ RabbitMQ (publish event) → Notification Service → Mailpit
+
+3. PRODUCT CATALOG FLOW:
+   Internet → Ingress → API Gateway → Product Service → MongoDB (Product DB)
+
+================================================================================
+                         SERVICE COMMUNICATION
+================================================================================
+
+SYNCHRONOUS (HTTP/REST):
+- API Gateway ←→ All Services
+- Order Service → User Service (authentication)
+- Order Service → Product Service (product info)
+- Order Service → Payment Service (payment processing)
+- Notification Service → User Service (user details)
+
+ASYNCHRONOUS (RabbitMQ):
+- Order Service → RabbitMQ → Notification Service
+  Events: order_placed, order_completed, order_failed
+
+================================================================================
+                         EXTERNAL ACCESS POINTS
+================================================================================
+
+PRIMARY:
+http://<ingress-url>/                     → API Gateway (main docs)
+http://<ingress-url>/api/user-service/*   → User API
+http://<ingress-url>/api/product-service/* → Product API
+http://<ingress-url>/api/order-service/*  → Order API
+http://<ingress-url>/api/payment-service/* → Payment API
+http://<ingress-url>/api/notification-service/* → Notification API
+
+DOCUMENTATION:
+http://<ingress-url>/docs/user-service    → User Service Swagger
+http://<ingress-url>/docs/product-service → Product Service Swagger
+http://<ingress-url>/docs/order-service   → Order Service Swagger
+http://<ingress-url>/docs/payment-service → Payment Service Swagger
+http://<ingress-url>/docs/notification-service → Notification Swagger
+
+MANAGEMENT:
+http://<ingress-url>/rabbitmq             → RabbitMQ Management UI
+http://<ingress-url>/mailpit              → Mailpit Web UI
+
+================================================================================
+                         RESOURCE SUMMARY
+================================================================================
+
+TOTAL PODS (at minimum scale):
+- 12 Service Pods (6 services × 2 replicas each)
+- 4 Database Pods (3 PostgreSQL + 1 MongoDB)
+- 2 Infrastructure Pods (RabbitMQ + Mailpit)
+= 18 Pods Total
+
+TOTAL STORAGE:
+- 6Gi for databases (3×1Gi + 1×2Gi + 1×1Gi for RabbitMQ)
+
+MINIMUM CLUSTER RESOURCES:
+- CPU: ~6 cores
+- Memory: ~12Gi
+- Storage: ~8Gi
+- Recommended Nodes: 3
+
+HIGH AVAILABILITY:
+- All services have 2 replicas
+- StatefulSets for databases
+- Automatic pod restart on failure
+- Load balancing via Kubernetes Services
+
+================================================================================
+                         MONITORING POINTS
+================================================================================
+
+HEALTH CHECKS:
+- All services have liveness probes (/)
+- All services have readiness probes (/)
+- Initial delay: 10-30 seconds
+- Period: 5-10 seconds
+
+LOGS:
+kubectl logs -f deployment/<service-name> -n microservices
+
+METRICS:
+kubectl top pods -n microservices
+kubectl top nodes
+
+EVENTS:
+kubectl get events -n microservices --sort-by='.lastTimestamp'
+
+================================================================================
+
+

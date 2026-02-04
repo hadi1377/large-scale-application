@@ -15,3 +15,4 @@ def verify_token(token: str) -> dict:
     except JWTError:
         raise ValueError("Invalid token")
 
+

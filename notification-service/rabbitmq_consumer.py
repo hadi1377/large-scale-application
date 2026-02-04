@@ -91,3 +91,4 @@ async def start_consumer():
                 logger.error("Max retries reached. Could not connect to RabbitMQ.")
                 raise
 
+

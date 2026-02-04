@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: microservices
+data:
+  ENV: "production"
+  # User Service
+  USER_DATABASE_URL: "postgresql://user_db_user:user_db_password@user-db:5432/user_db"
+  # Product Service
+  PRODUCT_MONGODB_URL: "mongodb://product_db_user:product_db_password@product-db:27017/product_db?authSource=admin"
+  # Order Service
+  ORDER_DATABASE_URL: "postgresql://order_db_user:order_db_password@order-db:5432/order_db"
+  # Payment Service
+  PAYMENT_DATABASE_URL: "postgresql://payment_db_user:payment_db_password@payment-db:5432/payment_db"
+  # RabbitMQ
+  RABBITMQ_URL: "amqp://rabbitmq_user:rabbitmq_password@rabbitmq:5672/"
+  # Notification Service
+  SMTP_HOST: "mailpit"
+  SMTP_PORT: "1025"
+  SMTP_FROM_EMAIL: "noreply@example.com"
+  SMTP_FROM_NAME: "Order Service"
+  USER_SERVICE_URL: "http://user-service:8000"
+  # Service API Keys
+  PAYMENT_SERVICE_API_KEY: "order-service-secret-key-2024"
+  SERVICE_API_KEY: "order-service-secret-key-2024"
+
+

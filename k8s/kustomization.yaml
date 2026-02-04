@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: microservices
+
+resources:
+  # Base
+  - base/namespace.yaml
+  - base/configmap.yaml
+  - base/secrets.yaml
+  
+  # Databases
+  - databases/user-db-statefulset.yaml
+  - databases/order-db-statefulset.yaml
+  - databases/payment-db-statefulset.yaml
+  - databases/product-db-statefulset.yaml
+  
+  # Infrastructure
+  - infrastructure/rabbitmq-deployment.yaml
+  - infrastructure/mailpit-deployment.yaml
+  
+  # Services
+  - services/user-service-deployment.yaml
+  - services/product-service-deployment.yaml
+  - services/order-service-deployment.yaml
+  - services/payment-service-deployment.yaml
+  - services/notification-service-deployment.yaml
+  - services/api-gateway-deployment.yaml
+  
+  # Ingress
+  - ingress/ingress.yaml
+
+# You can add additional configurations here
+# For example, to change resource limits or replicas
+# patches:
+# - target:
+#     kind: Deployment
+#     name: api-gateway
+#   patch: |-
+#     - op: replace
+#       path: /spec/replicas
+#       value: 3
+
+

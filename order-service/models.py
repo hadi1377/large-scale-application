@@ -25,3 +25,4 @@ class OrderItem(Base):
     quantity = Column(Integer, nullable=False)
     price_per_item = Column(Numeric(10, 2), nullable=False)
 
+
