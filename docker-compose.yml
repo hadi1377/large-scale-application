@@ -82,6 +82,7 @@ services:
       - ENV=development
       - DATABASE_URL=postgresql://order_db_user:order_db_password@order-db:5432/order_db
       - RABBITMQ_URL=amqp://rabbitmq_user:rabbitmq_password@rabbitmq:5672/
+      - PAYMENT_SERVICE_API_KEY=order-service-secret-key-2024
     volumes:
       - ./order-service:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
@@ -111,6 +112,7 @@ services:
     environment:
       - ENV=development
       - DATABASE_URL=postgresql://payment_db_user:payment_db_password@payment-db:5432/payment_db
+      - SERVICE_API_KEY=order-service-secret-key-2024
     volumes:
       - ./payment-service:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload

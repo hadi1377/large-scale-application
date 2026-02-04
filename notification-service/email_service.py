@@ -4,6 +4,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
 import logging
+from service_client import call_user_service
 
 logger = logging.getLogger(__name__)
 
@@ -15,21 +16,24 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", "noreply@example.com")
 SMTP_FROM_NAME = os.getenv("SMTP_FROM_NAME", "Order Service")
 
-# User service URL to fetch user details
-USER_SERVICE_URL = os.getenv("USER_SERVICE_URL", "http://user-service:8000")
-
 
 async def get_user_email(user_id: str) -> str:
-    """Fetch user email from user-service."""
+    """Fetch user email from user-service with circuit breaker protection."""
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{USER_SERVICE_URL}/users/{user_id}")
-            if response.status_code == 200:
-                user_data = response.json()
-                return user_data.get("email", "")
-            else:
-                logger.error(f"Failed to fetch user {user_id}: HTTP {response.status_code}")
-                return ""
+        response = await call_user_service(
+            method="GET",
+            endpoint=f"/users/{user_id}"
+        )
+        if response.status_code == 200:
+            user_data = response.json()
+            return user_data.get("email", "")
+        else:
+            logger.error(f"Failed to fetch user {user_id}: HTTP {response.status_code}")
+            return ""
+    except httpx.HTTPError as e:
+        # Circuit breaker may raise HTTPError when open
+        logger.error(f"User service unavailable when fetching user {user_id}: {str(e)}")
+        return ""
     except Exception as e:
         logger.error(f"Error fetching user email for {user_id}: {str(e)}")
         return ""

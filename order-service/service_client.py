@@ -4,6 +4,7 @@ Uses aiobreaker to implement circuit breakers for resilient service communicatio
 """
 import httpx
 import logging
+import os
 from datetime import timedelta
 from typing import Optional, Dict, Any
 from aiobreaker import CircuitBreaker, CircuitBreakerError
@@ -14,6 +15,9 @@ logger = logging.getLogger(__name__)
 PRODUCT_SERVICE_URL = "http://product-service:8000"
 USER_SERVICE_URL = "http://user-service:8000"
 PAYMENT_SERVICE_URL = "http://payment-service:8000"
+
+# API Key for payment service authentication
+PAYMENT_SERVICE_API_KEY = os.getenv("PAYMENT_SERVICE_API_KEY", "change-me-in-production")
 
 # Circuit breaker configuration
 CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5  # Open circuit after 5 failures
@@ -187,11 +191,12 @@ async def call_payment_service(
 ) -> httpx.Response:
     """
     Call payment service with circuit breaker protection.
+    Automatically includes the service API key for authentication.
     
     Args:
         method: HTTP method (GET, POST, etc.)
         endpoint: API endpoint path
-        headers: Optional HTTP headers
+        headers: Optional HTTP headers (API key will be added automatically)
         json_data: Optional JSON data for POST/PUT requests
         timeout: Request timeout in seconds
     
@@ -203,6 +208,11 @@ async def call_payment_service(
         httpx.HTTPError: For HTTP-related errors
     """
     url = f"{PAYMENT_SERVICE_URL}{endpoint}"
+    
+    # Ensure headers dict exists and add API key
+    if headers is None:
+        headers = {}
+    headers["X-Service-API-Key"] = PAYMENT_SERVICE_API_KEY
     
     try:
         return await _call_payment_service_internal(url, method, headers, json_data, timeout)

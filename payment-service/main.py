@@ -1,13 +1,32 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List
+from typing import List, Optional
 import uuid
+import os
 from database import engine, Base, get_db
 from models import Payment
 from schemas import PaymentRequest, PaymentResponse
 
 app = FastAPI(title="Payment Service")
+
+# API Key for service-to-service authentication
+SERVICE_API_KEY = os.getenv("SERVICE_API_KEY", "change-me-in-production")
+
+
+async def verify_service_api_key(
+    x_service_api_key: Optional[str] = Header(None, alias="X-Service-API-Key")
+):
+    """
+    Verify that the request comes from an authorized service (order-service).
+    Only requests with the correct API key are allowed.
+    """
+    if x_service_api_key != SERVICE_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. Invalid or missing service API key."
+        )
+    return True
 
 
 @app.on_event("startup")
@@ -25,7 +44,8 @@ def root():
 @app.get("/orders/{order_id}/payments", response_model=List[PaymentResponse])
 async def get_order_payments(
     order_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(verify_service_api_key)
 ):
     """
     Get all payments for a specific order.
@@ -44,7 +64,8 @@ async def get_order_payments(
 @app.post("/success", response_model=PaymentResponse)
 async def payment_success(
     payment_data: PaymentRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(verify_service_api_key)
 ):
     """
     Handle successful payment callback.
@@ -80,7 +101,8 @@ async def payment_success(
 @app.post("/failed", response_model=PaymentResponse)
 async def payment_failed(
     payment_data: PaymentRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(verify_service_api_key)
 ):
     """
     Handle failed payment callback.
