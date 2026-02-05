@@ -61,16 +61,47 @@ spec:
             name: notification-service
             port:
               number: 8000
-      # RabbitMQ Management UI
-      - path: /rabbitmq
+---
+# Separate Ingress for RabbitMQ Management UI with proper rewrite rules
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rabbitmq-ingress
+  namespace: microservices
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: microservices.local
+    http:
+      paths:
+      - path: /rabbitmq(/|$)(.*)
         pathType: Prefix
         backend:
           service:
             name: rabbitmq
             port:
               number: 15672
-      # Mailpit UI
-      - path: /mailpit
+---
+# Separate Ingress for Mailpit UI with proper rewrite rules
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mailpit-ingress
+  namespace: microservices
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: microservices.local
+    http:
+      paths:
+      - path: /mailpit(/|$)(.*)
         pathType: Prefix
         backend:
           service:

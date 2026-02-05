@@ -308,8 +308,21 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller
 - **Notification API**: `http://<ingress-url>/api/notification-service/*`
 
 ### Management UIs
-- **RabbitMQ**: `http://<ingress-url>/rabbitmq`
-- **Mailpit**: `http://<ingress-url>/mailpit`
+- **RabbitMQ Management**: `http://<ingress-url>/rabbitmq`
+  - Default credentials: `rabbitmq_user` / `rabbitmq_password`
+- **Mailpit Web UI**: `http://<ingress-url>/mailpit`
+  - No authentication required
+
+**Note**: For Minikube, use port-forwarding for easier access:
+```bash
+# RabbitMQ
+kubectl port-forward -n microservices svc/rabbitmq 15672:15672
+# Access: http://localhost:15672
+
+# Mailpit
+kubectl port-forward -n microservices svc/mailpit 8025:8025
+# Access: http://localhost:8025
+```
 
 ## Persistent Data
 

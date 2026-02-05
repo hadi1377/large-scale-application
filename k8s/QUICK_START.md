@@ -40,12 +40,36 @@ chmod +x build-images.sh deploy.sh undeploy.sh
 # and deploy all services to the 'microservices' namespace
 ```
 
-### 4. Access
-```bash
-# Port forward to access locally
-kubectl port-forward -n microservices svc/api-gateway 8050:8000
+### 4. Access Services
 
+#### Option A: Via Port Forward (Recommended for Minikube)
+```bash
+# API Gateway
+kubectl port-forward -n microservices svc/api-gateway 8050:8000
 # Visit: http://localhost:8050
+
+# RabbitMQ Management UI
+kubectl port-forward -n microservices svc/rabbitmq 15672:15672
+# Visit: http://localhost:15672
+# Login: rabbitmq_user / rabbitmq_password
+
+# Mailpit Web UI
+kubectl port-forward -n microservices svc/mailpit 8025:8025
+# Visit: http://localhost:8025
+```
+
+#### Option B: Via Ingress
+```bash
+# Get Minikube IP
+minikube ip
+
+# Add to hosts file (Windows: C:\Windows\System32\drivers\etc\hosts)
+# <minikube-ip>  microservices.local
+
+# Then access:
+# - API Gateway: http://microservices.local/
+# - RabbitMQ: http://microservices.local/rabbitmq
+# - Mailpit: http://microservices.local/mailpit
 ```
 
 **Done!** 🎉
