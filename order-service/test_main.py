@@ -486,8 +486,14 @@ class TestListOrders:
         )
         assert response.status_code == 200
     
-    async def test_list_orders_invalid_token(self, client):
+    @patch('main.call_user_service')
+    async def test_list_orders_invalid_token(self, mock_user_service, client):
         """Test listing orders with invalid token"""
+        # Mock user service to return 401 for invalid token
+        mock_user_response_obj = MagicMock()
+        mock_user_response_obj.status_code = 401
+        mock_user_service.return_value = mock_user_response_obj
+        
         response = client.get(
             "/orders",
             headers={"Authorization": "Bearer invalid_token"}

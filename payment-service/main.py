@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Payment Service", lifespan=lifespan)
 
 # API Key for service-to-service authentication
-SERVICE_API_KEY = os.getenv("SERVICE_API_KEY", "change-me-in-production")
+SERVICE_API_KEY = os.getenv("SERVICE_API_KEY", "order-service-secret-key-2024")
 
 
 async def verify_service_api_key(
