@@ -22,6 +22,10 @@ The application consists of the following components:
 - **RabbitMQ**: Message broker for async communication
 - **Mailpit**: Email testing tool
 
+### Monitoring
+- **Prometheus**: Metrics collection and storage
+- **Grafana**: Metrics visualization and dashboards
+
 ## Directory Structure
 
 ```
@@ -38,6 +42,10 @@ k8s/
 ├── infrastructure/           # Infrastructure services
 │   ├── rabbitmq-deployment.yaml
 │   └── mailpit-deployment.yaml
+├── monitoring/               # Monitoring stack
+│   ├── prometheus-config.yaml
+│   ├── prometheus-deployment.yaml
+│   └── grafana-deployment.yaml
 ├── services/                 # Microservice deployments
 │   ├── api-gateway-deployment.yaml
 │   ├── user-service-deployment.yaml
@@ -272,6 +280,12 @@ kubectl port-forward -n microservices svc/rabbitmq 15672:15672
 # Forward Mailpit UI
 kubectl port-forward -n microservices svc/mailpit 8025:8025
 
+# Forward Prometheus
+kubectl port-forward -n microservices svc/prometheus 9090:9090
+
+# Forward Grafana
+kubectl port-forward -n microservices svc/grafana 3000:3000
+
 # Forward PostgreSQL (User DB)
 kubectl port-forward -n microservices svc/user-db 5432:5432
 ```
@@ -312,6 +326,14 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller
   - Default credentials: `rabbitmq_user` / `rabbitmq_password`
 - **Mailpit Web UI**: `http://<ingress-url>/mailpit`
   - No authentication required
+
+### Monitoring UIs
+- **Prometheus**: `http://localhost:9090` (via port-forward)
+  - Query metrics, view targets, create alerts
+- **Grafana**: `http://localhost:3000` (via port-forward)
+  - Default credentials: `admin` / `admin` (⚠️ Change in production!)
+  - Pre-configured with Prometheus datasource
+  - Create dashboards to visualize service metrics
 
 **Note**: For Minikube, use port-forwarding for easier access:
 ```bash
@@ -440,10 +462,60 @@ docker push <registry>/<image-name>:latest
 5. **Use HorizontalPodAutoscaler** for auto-scaling
 
 ### Monitoring
-1. **Install Prometheus and Grafana** for metrics
-2. **Set up ELK/EFK stack** for centralized logging
-3. **Configure alerts** for critical issues
-4. **Use Jaeger or Zipkin** for distributed tracing
+
+#### Prometheus and Grafana
+
+The monitoring stack is already configured and ready to deploy:
+
+```bash
+# Deploy Prometheus configuration
+kubectl apply -f monitoring/prometheus-config.yaml
+
+# Deploy Prometheus
+kubectl apply -f monitoring/prometheus-deployment.yaml
+
+# Deploy Grafana
+kubectl apply -f monitoring/grafana-deployment.yaml
+
+# Wait for services to be ready
+kubectl wait --for=condition=ready pod -l app=prometheus -n microservices --timeout=120s
+kubectl wait --for=condition=ready pod -l app=grafana -n microservices --timeout=120s
+```
+
+**Access Prometheus**:
+```bash
+kubectl port-forward -n microservices svc/prometheus 9090:9090
+# Visit: http://localhost:9090
+```
+
+**Access Grafana**:
+```bash
+kubectl port-forward -n microservices svc/grafana 3000:3000
+# Visit: http://localhost:3000
+# Default credentials: admin / admin (⚠️ Change in production!)
+```
+
+**Service Metrics**: All services automatically expose Prometheus metrics at `/metrics`:
+- `http://api-gateway:8000/metrics`
+- `http://user-service:8000/metrics`
+- `http://product-service:8000/metrics`
+- `http://order-service:8000/metrics`
+- `http://payment-service:8000/metrics`
+- `http://notification-service:8000/metrics`
+
+**Example Prometheus Queries**:
+- Request rate: `rate(http_requests_total[5m])`
+- Error rate: `sum(rate(http_requests_total{status_code=~"5.."}[5m])) by (service)`
+- Average response time: `rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])`
+- 95th percentile: `histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))`
+
+For detailed monitoring setup and usage, see [PROMETHEUS_MONITORING.md](../../PROMETHEUS_MONITORING.md).
+
+#### Additional Monitoring (Optional)
+1. **Set up ELK/EFK stack** for centralized logging
+2. **Configure alerts** in Prometheus for critical issues
+3. **Use Jaeger or Zipkin** for distributed tracing
+4. **Set up alerting** with Alertmanager
 
 ### Backup Strategy
 1. **Schedule regular database backups**

@@ -62,6 +62,16 @@ kubectl wait --for=condition=ready pod -l app=api-gateway -n microservices --tim
 echo "Deploying Ingress..."
 kubectl apply -f ingress/ingress.yaml
 
+# Deploy monitoring (optional)
+if [ -d "monitoring" ]; then
+    echo ""
+    echo "Deploying monitoring stack..."
+    kubectl apply -f monitoring/prometheus-config.yaml
+    kubectl apply -f monitoring/prometheus-deployment.yaml
+    kubectl apply -f monitoring/grafana-deployment.yaml
+    echo "Monitoring stack deployed!"
+fi
+
 echo ""
 echo "Deployment complete!"
 echo ""
@@ -78,5 +88,12 @@ echo ""
 echo "To forward the API Gateway port locally:"
 echo "  kubectl port-forward -n microservices svc/api-gateway 8000:8000"
 echo "  Then visit: http://localhost:8000"
+echo ""
+if [ -d "monitoring" ]; then
+    echo "To access monitoring:"
+    echo "  Prometheus: kubectl port-forward -n microservices svc/prometheus 9090:9090"
+    echo "  Grafana: kubectl port-forward -n microservices svc/grafana 3000:3000"
+    echo "  Grafana login: admin / admin"
+fi
 
 

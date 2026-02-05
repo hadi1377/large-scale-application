@@ -40,6 +40,18 @@ chmod +x build-images.sh deploy.sh undeploy.sh
 # and deploy all services to the 'microservices' namespace
 ```
 
+### 3.5. Deploy Monitoring (Optional but Recommended)
+```bash
+# Deploy Prometheus and Grafana
+kubectl apply -f monitoring/prometheus-config.yaml
+kubectl apply -f monitoring/prometheus-deployment.yaml
+kubectl apply -f monitoring/grafana-deployment.yaml
+
+# Wait for monitoring to be ready
+kubectl wait --for=condition=ready pod -l app=prometheus -n microservices --timeout=120s
+kubectl wait --for=condition=ready pod -l app=grafana -n microservices --timeout=120s
+```
+
 ### 4. Access Services
 
 #### Option A: Via Port Forward (Recommended for Minikube)
@@ -56,6 +68,15 @@ kubectl port-forward -n microservices svc/rabbitmq 15672:15672
 # Mailpit Web UI
 kubectl port-forward -n microservices svc/mailpit 8025:8025
 # Visit: http://localhost:8025
+
+# Prometheus (Monitoring)
+kubectl port-forward -n microservices svc/prometheus 9090:9090
+# Visit: http://localhost:9090
+
+# Grafana (Dashboards)
+kubectl port-forward -n microservices svc/grafana 3000:3000
+# Visit: http://localhost:3000
+# Login: admin / admin
 ```
 
 #### Option B: Via Ingress
@@ -135,6 +156,15 @@ kubectl port-forward -n microservices svc/rabbitmq 15672:15672
 
 # Mailpit UI
 kubectl port-forward -n microservices svc/mailpit 8025:8025
+
+# Prometheus (Metrics)
+kubectl port-forward -n microservices svc/prometheus 9090:9090
+# Visit: http://localhost:9090
+
+# Grafana (Dashboards)
+kubectl port-forward -n microservices svc/grafana 3000:3000
+# Visit: http://localhost:3000
+# Login: admin / admin
 ```
 
 ### Cleanup
@@ -187,6 +217,41 @@ Once deployed, access:
 - **Order Service API**: `http://<your-url>/api/order-service/*`
 - **Payment Service API**: `http://<your-url>/api/payment-service/*`
 - **Notification Service API**: `http://<your-url>/api/notification-service/*`
+
+## Monitoring
+
+### Access Monitoring Tools
+
+**Prometheus** (Metrics Collection):
+```bash
+kubectl port-forward -n microservices svc/prometheus 9090:9090
+# Visit: http://localhost:9090
+```
+
+**Grafana** (Dashboards):
+```bash
+kubectl port-forward -n microservices svc/grafana 3000:3000
+# Visit: http://localhost:3000
+# Default credentials: admin / admin
+```
+
+### Service Metrics Endpoints
+
+Each service exposes metrics at `/metrics`:
+- API Gateway: `http://api-gateway:8000/metrics`
+- User Service: `http://user-service:8000/metrics`
+- Product Service: `http://product-service:8000/metrics`
+- Order Service: `http://order-service:8000/metrics`
+- Payment Service: `http://payment-service:8000/metrics`
+- Notification Service: `http://notification-service:8000/metrics`
+
+### Quick Prometheus Queries
+
+- **Request Rate**: `rate(http_requests_total[5m])`
+- **Error Rate**: `sum(rate(http_requests_total{status_code=~"5.."}[5m])) by (service)`
+- **Response Time**: `rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])`
+
+For more monitoring details, see [PROMETHEUS_MONITORING.md](../../PROMETHEUS_MONITORING.md).
 
 ---
 
