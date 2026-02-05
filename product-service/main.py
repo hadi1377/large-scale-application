@@ -4,6 +4,7 @@ from bson import ObjectId
 from bson.errors import InvalidId
 from datetime import datetime
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from database import connect_to_mongo, close_mongo_connection, get_database
 from schemas import ProductCreate, ProductUpdate, ProductResponse
@@ -25,6 +26,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Add Prometheus metrics
+Instrumentator().instrument(app).expose(app)
 
 
 @app.get("/")

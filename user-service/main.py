@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
 from database import engine, Base, get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from models import User
@@ -62,6 +63,9 @@ def custom_openapi():
 
 
 app.openapi = custom_openapi
+
+# Add Prometheus metrics
+Instrumentator().instrument(app).expose(app)
 
 
 @app.get("/")

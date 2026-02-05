@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response, Request
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 import httpx
 import json
 
@@ -9,6 +10,9 @@ app = FastAPI(
     description="Centralized API documentation for all microservices",
     version="1.0.0"
 )
+
+# Add Prometheus metrics
+Instrumentator().instrument(app).expose(app)
 
 # Service URLs (adjust ports as needed)
 SERVICES = {

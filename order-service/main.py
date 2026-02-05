@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from decimal import Decimal
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
 import httpx
 from typing import List
 
@@ -83,6 +84,9 @@ def custom_openapi():
 
 
 app.openapi = custom_openapi
+
+# Add Prometheus metrics
+Instrumentator().instrument(app).expose(app)
 
 # Service URLs are now managed in service_client.py
 

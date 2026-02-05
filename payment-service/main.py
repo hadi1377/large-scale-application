@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
 import uuid
 import os
 from database import engine, Base, get_db
@@ -21,6 +22,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Payment Service", lifespan=lifespan)
+
+# Add Prometheus metrics
+Instrumentator().instrument(app).expose(app)
 
 # API Key for service-to-service authentication
 SERVICE_API_KEY = os.getenv("SERVICE_API_KEY", "order-service-secret-key-2024")

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
 from rabbitmq_consumer import start_consumer
 
 # Configure logging
@@ -45,6 +46,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Add Prometheus metrics
+Instrumentator().instrument(app).expose(app)
 
 
 @app.get("/")
