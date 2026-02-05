@@ -63,6 +63,10 @@ jobs:
     needs: test
     if: github.event_name == 'push'
     
+    permissions:
+      contents: read
+      packages: write
+    
     strategy:
       matrix:
         service:
