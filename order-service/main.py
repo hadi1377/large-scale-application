@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from decimal import Decimal
+from contextlib import asynccontextmanager
 import httpx
 from typing import List
 
@@ -21,10 +22,22 @@ from service_client import (
 # OAuth2 scheme for token extraction
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    # Startup
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    # Shutdown
+    await close_connection()
+
+
 app = FastAPI(
     title="Order Service",
     description="Order management service with order creation and processing",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 
@@ -72,19 +85,6 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 # Service URLs are now managed in service_client.py
-
-
-@app.on_event("startup")
-async def startup():
-    # Create database tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    # Close RabbitMQ connection
-    await close_connection()
 
 
 @app.get("/")
@@ -564,7 +564,10 @@ async def get_order(
         )
     
     # Check access permission
-    if role != "admin" and order.user_id != uuid_lib.UUID(user_id):
+    # Convert both to strings for comparison (order.user_id might be string from SQLite)
+    order_user_id_str = str(order.user_id)
+    request_user_id_str = str(uuid_lib.UUID(user_id))
+    if role != "admin" and order_user_id_str != request_user_id_str:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to access this order"

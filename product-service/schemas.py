@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ProductCreate(BaseModel):
@@ -15,8 +15,8 @@ class ProductCreate(BaseModel):
         description="Additional product properties as key-value pairs"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "Laptop",
                 "description": "High-performance laptop",
@@ -31,6 +31,7 @@ class ProductCreate(BaseModel):
                 }
             }
         }
+    )
 
 
 class ProductUpdate(BaseModel):
@@ -45,8 +46,8 @@ class ProductUpdate(BaseModel):
         description="Additional product properties as key-value pairs"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "name": "Updated Laptop",
                 "description": "Updated description",
@@ -60,6 +61,7 @@ class ProductUpdate(BaseModel):
                 }
             }
         }
+    )
 
 
 class ProductResponse(BaseModel):
@@ -74,9 +76,9 @@ class ProductResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "id": "507f1f77bcf86cd799439011",
                 "name": "Laptop",
@@ -94,4 +96,5 @@ class ProductResponse(BaseModel):
                 "updated_at": "2024-01-01T00:00:00"
             }
         }
+    )
 

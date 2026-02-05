@@ -2,13 +2,25 @@ from fastapi import FastAPI, Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
+from contextlib import asynccontextmanager
 import uuid
 import os
 from database import engine, Base, get_db
 from models import Payment
 from schemas import PaymentRequest, PaymentResponse
 
-app = FastAPI(title="Payment Service")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    # Startup
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    # Shutdown (no cleanup needed)
+
+
+app = FastAPI(title="Payment Service", lifespan=lifespan)
 
 # API Key for service-to-service authentication
 SERVICE_API_KEY = os.getenv("SERVICE_API_KEY", "change-me-in-production")
@@ -27,13 +39,6 @@ async def verify_service_api_key(
             detail="Access denied. Invalid or missing service API key."
         )
     return True
-
-
-@app.on_event("startup")
-async def startup():
-    # Create database tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
 
 
 @app.get("/")

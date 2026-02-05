@@ -3,27 +3,28 @@ from typing import List, Optional
 from bson import ObjectId
 from bson.errors import InvalidId
 from datetime import datetime
+from contextlib import asynccontextmanager
 
 from database import connect_to_mongo, close_mongo_connection, get_database
 from schemas import ProductCreate, ProductUpdate, ProductResponse
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events"""
+    # Startup
+    await connect_to_mongo()
+    yield
+    # Shutdown
+    await close_mongo_connection()
+
+
 app = FastAPI(
     title="Product Service",
     description="Product management service with CRUD operations",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
-
-
-@app.on_event("startup")
-async def startup():
-    """Initialize database connection on startup"""
-    await connect_to_mongo()
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """Close database connection on shutdown"""
-    await close_mongo_connection()
 
 
 @app.get("/")
@@ -60,7 +61,7 @@ async def create_product(product: ProductCreate):
     collection = db.products
     
     # Create product document
-    product_dict = product.dict()
+    product_dict = product.model_dump()
     product_dict["created_at"] = datetime.utcnow()
     product_dict["updated_at"] = datetime.utcnow()
     
@@ -199,7 +200,7 @@ async def update_product(product_id: str, product_update: ProductUpdate):
         )
     
     # Prepare update data (only include fields that are provided)
-    update_data = {k: v for k, v in product_update.dict().items() if v is not None}
+    update_data = {k: v for k, v in product_update.model_dump().items() if v is not None}
     
     if not update_data:
         raise HTTPException(

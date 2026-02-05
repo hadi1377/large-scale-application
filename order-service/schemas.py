@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from decimal import Decimal
 import uuid
 
@@ -10,13 +10,14 @@ class OrderItemCreate(BaseModel):
     product_id: str = Field(..., description="Product ID from product service")
     quantity: int = Field(..., gt=0, description="Quantity must be greater than 0")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "product_id": "507f1f77bcf86cd799439011",
                 "quantity": 2
             }
         }
+    )
 
 
 class OrderCreate(BaseModel):
@@ -24,8 +25,8 @@ class OrderCreate(BaseModel):
     items: List[OrderItemCreate] = Field(..., min_items=1, description="At least one item is required")
     success: bool = Field(default=True, description="Payment success flag. If true, payment will succeed; if false, payment will fail.")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "items": [
                     {
@@ -40,6 +41,7 @@ class OrderCreate(BaseModel):
                 "success": True
             }
         }
+    )
 
 
 class OrderItemResponse(BaseModel):
@@ -50,20 +52,20 @@ class OrderItemResponse(BaseModel):
     quantity: int
     price_per_item: Decimal
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class OrderUpdate(BaseModel):
     """Schema for updating an order status"""
     status: Literal["completed", "failed"] = Field(..., description="Order status: 'completed' or 'failed'")
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "completed"
             }
         }
+    )
 
 
 class OrderResponse(BaseModel):
@@ -76,6 +78,5 @@ class OrderResponse(BaseModel):
     updated_at: datetime
     items: List[OrderItemResponse] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 

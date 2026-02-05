@@ -244,12 +244,17 @@ def get_circuit_breaker_state(service_name: str) -> Dict[str, Any]:
         return {"error": f"Unknown service: {service_name}"}
     
     state = cb.current_state
-    return {
+    result = {
         "service": service_name,
         "state": state.name if hasattr(state, 'name') else str(state),
-        "fail_counter": cb.fail_counter,
-        "success_counter": cb.success_counter,
-        "last_failure": str(cb.last_failure) if cb.last_failure else None,
-        "opened_at": str(cb.opened_at) if cb.opened_at else None
+        "fail_counter": cb.fail_counter
     }
+    # Only include attributes if they exist
+    if hasattr(cb, 'success_counter'):
+        result["success_counter"] = cb.success_counter
+    if hasattr(cb, 'last_failure'):
+        result["last_failure"] = str(cb.last_failure) if cb.last_failure else None
+    if hasattr(cb, 'opened_at'):
+        result["opened_at"] = str(cb.opened_at) if cb.opened_at else None
+    return result
 
