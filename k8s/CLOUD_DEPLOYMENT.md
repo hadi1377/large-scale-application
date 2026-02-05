@@ -565,3 +565,4 @@ kubectl create secret docker-registry regcred \
 For more detailed cloud-specific configurations, refer to the official documentation of each cloud provider.
 
 
+

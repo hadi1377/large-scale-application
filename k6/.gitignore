@@ -1,0 +1,14 @@
+# k6 test results
+*.json
+!package.json
+!tsconfig.json
+
+# Test output files
+results/
+output/
+
+# Environment files
+.env
+.env.local
+
+
