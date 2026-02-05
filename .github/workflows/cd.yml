@@ -1,0 +1,147 @@
+name: CD - Deploy to Kubernetes
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}
+  KUBERNETES_NAMESPACE: microservices
+
+jobs:
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'staging' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      
+      - name: Configure kubectl
+        run: |
+          # For GitHub-hosted runners, you'll need to configure kubectl
+          # This example uses a kubeconfig file from secrets
+          # For cloud providers, use their specific setup actions
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+        if: secrets.KUBECONFIG != ''
+      
+      - name: Verify kubectl connection
+        run: |
+          kubectl version --client
+          kubectl cluster-info
+        continue-on-error: true
+      
+      - name: Determine image tags
+        id: tags
+        run: |
+          if [ "${{ github.ref_type }}" == "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+          echo "sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+      
+      - name: Update Kubernetes manifests with new image tags
+        run: |
+          TAG=${{ steps.tags.outputs.tag }}
+          SHA=${{ steps.tags.outputs.sha }}
+          REGISTRY="${{ env.REGISTRY }}"
+          IMAGE_PREFIX="${{ env.IMAGE_PREFIX }}"
+          
+          # Update image tags in deployment files
+          for service in api-gateway user-service product-service order-service payment-service notification-service; do
+            if [ -f "k8s/services/${service}-deployment.yaml" ]; then
+              # Update image line - handles both simple (service:tag) and full registry paths
+              if [[ "$OSTYPE" == "darwin"* ]]; then
+                # macOS
+                sed -i '' "s|image:.*${service}.*|image: ${REGISTRY}/${IMAGE_PREFIX}/${service}:${TAG}|g" \
+                  k8s/services/${service}-deployment.yaml || true
+              else
+                # Linux
+                sed -i "s|image:.*${service}.*|image: ${REGISTRY}/${IMAGE_PREFIX}/${service}:${TAG}|g" \
+                  k8s/services/${service}-deployment.yaml || true
+              fi
+              echo "Updated ${service} image to ${REGISTRY}/${IMAGE_PREFIX}/${service}:${TAG}"
+            fi
+          done
+          
+          # Verify changes
+          echo "Updated image references:"
+          grep -h "image:" k8s/services/*-deployment.yaml || true
+      
+      - name: Deploy to Kubernetes
+        run: |
+          cd k8s
+          
+          # Create namespace if it doesn't exist
+          kubectl create namespace ${{ env.KUBERNETES_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          
+          # Apply base configurations
+          kubectl apply -f base/namespace.yaml
+          kubectl apply -f base/configmap.yaml
+          kubectl apply -f base/secrets.yaml
+          
+          # Deploy databases
+          kubectl apply -f databases/user-db-statefulset.yaml
+          kubectl apply -f databases/order-db-statefulset.yaml
+          kubectl apply -f databases/payment-db-statefulset.yaml
+          kubectl apply -f databases/product-db-statefulset.yaml
+          
+          # Deploy infrastructure
+          kubectl apply -f infrastructure/rabbitmq-deployment.yaml
+          kubectl apply -f infrastructure/mailpit-deployment.yaml
+          
+          # Wait for infrastructure to be ready
+          echo "Waiting for infrastructure to be ready..."
+          kubectl wait --for=condition=ready pod -l app=user-db -n ${{ env.KUBERNETES_NAMESPACE }} --timeout=300s || true
+          kubectl wait --for=condition=ready pod -l app=rabbitmq -n ${{ env.KUBERNETES_NAMESPACE }} --timeout=300s || true
+          
+          # Deploy services
+          kubectl apply -f services/user-service-deployment.yaml
+          kubectl apply -f services/product-service-deployment.yaml
+          kubectl apply -f services/order-service-deployment.yaml
+          kubectl apply -f services/payment-service-deployment.yaml
+          kubectl apply -f services/notification-service-deployment.yaml
+          kubectl apply -f services/api-gateway-deployment.yaml
+          
+          # Deploy ingress
+          kubectl apply -f ingress/ingress.yaml
+          
+          echo "Deployment completed!"
+      
+      - name: Verify deployment
+        run: |
+          echo "Checking deployment status..."
+          kubectl get pods -n ${{ env.KUBERNETES_NAMESPACE }}
+          kubectl get services -n ${{ env.KUBERNETES_NAMESPACE }}
+          kubectl get ingress -n ${{ env.KUBERNETES_NAMESPACE }}
+      
+      - name: Deployment summary
+        if: always()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Environment: ${{ github.event.inputs.environment || 'staging' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Image Tag: ${{ steps.tags.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit SHA: ${{ steps.tags.outputs.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Namespace: ${{ env.KUBERNETES_NAMESPACE }}" >> $GITHUB_STEP_SUMMARY
+
