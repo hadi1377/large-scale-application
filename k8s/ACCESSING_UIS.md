@@ -291,3 +291,5 @@ If the RabbitMQ UI loads but assets are missing:
 **Recommended**: For Minikube development, use **port-forwarding** for the most reliable access to RabbitMQ and Mailpit UIs! 🚀
 
 
+
+

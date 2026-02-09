@@ -102,6 +102,37 @@ export default function () {
 export function handleSummary(data) {
   return {
     'stdout': textSummary(data, { indent: ' ', enableColors: true }),
+    'k6-results.json': JSON.stringify(data, null, 2),
+    'k6-summary.json': JSON.stringify({
+      timestamp: new Date().toISOString(),
+      test: 'stress',
+      metrics: {
+        http_req_duration: {
+          avg: data.metrics.http_req_duration?.values?.avg || 0,
+          min: data.metrics.http_req_duration?.values?.min || 0,
+          med: data.metrics.http_req_duration?.values?.med || 0,
+          max: data.metrics.http_req_duration?.values?.max || 0,
+          p95: data.metrics.http_req_duration?.values?.['p(95)'] || 0,
+          p99: data.metrics.http_req_duration?.values?.['p(99)'] || 0,
+        },
+        http_req_failed: {
+          rate: data.metrics.http_req_failed?.values?.rate || 0,
+        },
+        http_reqs: {
+          rate: data.metrics.http_reqs?.values?.rate || 0,
+          count: data.metrics.http_reqs?.values?.count || 0,
+        },
+        iterations: {
+          count: data.metrics.iterations?.values?.count || 0,
+          rate: data.metrics.iterations?.values?.rate || 0,
+        },
+        vus: {
+          value: data.metrics.vus?.values?.value || 0,
+          max: data.metrics.vus?.values?.max || 0,
+        },
+      },
+      thresholds: data.root_group?.thresholds || {},
+    }, null, 2),
   };
 }
 

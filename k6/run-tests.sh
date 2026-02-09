@@ -39,3 +39,5 @@ k6 run --env BASE_URL="$BASE_URL" "$SCENARIO_FILE"
 echo -e "${GREEN}Test completed!${NC}"
 
 
+
+

@@ -36,3 +36,5 @@ k6 run --env BASE_URL="$BaseUrl" $scenarioFile
 Write-Host "Test completed!" -ForegroundColor Green
 
 
+
+
