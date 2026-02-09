@@ -180,22 +180,43 @@ on:
   schedule:
     - cron: '0 2 * * *'  # Daily at 2 AM
   workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Test scenario to run'
+        required: false
+        default: 'smoke'
+        type: choice
+        options:
+          - smoke
+          - load
+          - stress
+          - spike
+          - e2e
 
 jobs:
   load-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install k6
+        uses: grafana/setup-k6-action@v1
+      - name: Run k6 test
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ secrets.API_GATEWAY_URL || 'http://localhost:8050' }}
         run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D9B
-          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-          sudo apt-get update
-          sudo apt-get install k6
-      - name: Run smoke test
-        run: |
-          k6 run k6/scenarios/smoke.js --env BASE_URL=${{ secrets.API_GATEWAY_URL }}
+          SCENARIO="${{ github.event.inputs.scenario || 'smoke' }}"
+          k6 run --env BASE_URL="${{ secrets.API_GATEWAY_URL || 'http://localhost:8050' }}" k6/scenarios/${SCENARIO}.js
+      - name: Upload k6 results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-${{ github.event.inputs.scenario || 'smoke' }}-${{ github.run_number }}
+          path: |
+            k6-results.json
+            k6-summary.json
+          retention-days: 30
+          if-no-files-found: warn
 ```
 
 ## Best Practices
@@ -208,6 +229,18 @@ jobs:
 6. **Test in Production-like Environment**: Use staging environment that mirrors production
 
 ## Troubleshooting
+
+### k6 Installation Issues in GitHub Actions
+
+If you encounter GPG keyserver errors when installing k6:
+- **Use the official action**: `uses: grafana/setup-k6-action@v1` (recommended)
+- **Alternative method** (if action doesn't work):
+  ```yaml
+  - name: Install k6
+    run: |
+      curl https://github.com/grafana/k6/releases/download/v0.47.0/k6-v0.47.0-linux-amd64.tar.gz -L | tar xvz
+      sudo mv k6-v0.47.0-linux-amd64/k6 /usr/local/bin/k6
+  ```
 
 ### Connection Refused
 - Ensure the API Gateway is running and accessible
@@ -225,6 +258,11 @@ jobs:
 - Monitor service resource usage
 - Review service logs for bottlenecks
 - Consider scaling services
+
+### Missing Artifacts (k6-results.json, k6-summary.json)
+- Ensure the test completes (even if it fails)
+- Check that `handleSummary` function in your scenario outputs JSON files
+- Verify the workflow has `continue-on-error: true` or `if: always()` for artifact upload step
 
 ## Advanced Usage
 

@@ -3,7 +3,7 @@
 
 export const config = {
   // Base URL - can be overridden via environment variable
-  baseUrl: __ENV.BASE_URL || 'http://localhost:8050',
+  baseUrl: __ENV.BASE_URL || 'http://localhost:13230',
   
   // Test thresholds
   thresholds: {

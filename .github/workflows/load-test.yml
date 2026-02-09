@@ -19,7 +19,7 @@ on:
       base_url:
         description: 'API Gateway Base URL'
         required: false
-        default: 'http://localhost:8050'
+        default: 'http://localhost:13230'
 
 jobs:
   load-test:
@@ -28,6 +28,46 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Start services with docker-compose
+        run: |
+          # Try docker compose (v2) first, fallback to docker-compose (v1)
+          if docker compose version > /dev/null 2>&1; then
+            docker compose up -d
+          else
+            docker-compose up -d
+          fi
+          
+          echo "Waiting for services to be ready..."
+          timeout=180
+          elapsed=0
+          while [ $elapsed -lt $timeout ]; do
+            if curl -f http://localhost:13230/health > /dev/null 2>&1; then
+              echo "✅ API Gateway is healthy!"
+              break
+            fi
+            echo "Waiting for API Gateway... ($elapsed/$timeout seconds)"
+            sleep 5
+            elapsed=$((elapsed + 5))
+          done
+          if [ $elapsed -ge $timeout ]; then
+            echo "❌ API Gateway did not become healthy in time"
+            if docker compose version > /dev/null 2>&1; then
+              docker compose logs api-gateway
+              docker compose ps
+            else
+              docker-compose logs api-gateway
+              docker-compose ps
+            fi
+            exit 1
+          fi
+          # Give services a bit more time to fully initialize (databases, etc.)
+          echo "Waiting for services to fully initialize..."
+          sleep 15
+          echo "Services are ready!"
+
       - name: Install k6
         uses: grafana/setup-k6-action@v1
 
@@ -35,12 +75,30 @@ jobs:
         id: k6_test
         continue-on-error: true
         env:
-          BASE_URL: ${{ github.event.inputs.base_url || 'http://localhost:8050' }}
+          BASE_URL: ${{ github.event.inputs.base_url || 'http://localhost:13230' }}
         run: |
           SCENARIO="${{ github.event.inputs.scenario || 'smoke' }}"
           echo "Running k6 $SCENARIO test..."
-          k6 run --env BASE_URL="${{ github.event.inputs.base_url || 'http://localhost:8050' }}" k6/scenarios/${SCENARIO}.js || true
+          echo "BASE_URL: $BASE_URL"
+          k6 run --env BASE_URL="$BASE_URL" k6/scenarios/${SCENARIO}.js || true
           echo "Test completed with exit code: $?"
+
+      - name: Show service logs on failure
+        if: failure()
+        run: |
+          echo "=== API Gateway Logs ==="
+          if docker compose version > /dev/null 2>&1; then
+            docker compose logs api-gateway || true
+            docker compose logs user-service || true
+            docker compose logs product-service || true
+            docker compose ps || true
+          else
+            docker-compose logs api-gateway || true
+            docker-compose logs user-service || true
+            docker-compose logs product-service || true
+            docker-compose ps || true
+          fi
+          echo "=== All Services Status ==="
 
       - name: Upload k6 results
         if: always()
@@ -74,4 +132,13 @@ jobs:
           else
             echo "❌ Test artifacts not found. Test may have failed before completion."
             exit 1
+          fi
+
+      - name: Stop services
+        if: always()
+        run: |
+          if docker compose version > /dev/null 2>&1; then
+            docker compose down -v || true
+          else
+            docker-compose down -v || true
           fi
